@@ -12,7 +12,7 @@ Features:
 - Cloudfront
 -- HTTP 2.0 enabled
 -- IPv6 enabled
-- Worldwide distribution
+- North America distribution
 
 ## How to
 

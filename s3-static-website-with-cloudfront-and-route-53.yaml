@@ -35,6 +35,11 @@ Mappings:
     sa-east-1:
       S3HostedZoneId: Z31GFT0UA1I2HV
 Resources:
+  WebsiteCloudfrontIdentity:
+    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+    Properties:
+      CloudFrontOriginAccessIdentityConfig: 
+        Comment: "Identity for Cloudfront"
   WebsiteBucket:
     Type: AWS::S3::Bucket
     Properties:
@@ -42,50 +47,55 @@ Resources:
       AccessControl: PublicRead
       WebsiteConfiguration:
         IndexDocument: index.html
-        ErrorDocument: 404.html
-    DeletionPolicy: Retain
+        ErrorDocument: index.html
   WebsiteBucketPolicy:
     Type: AWS::S3::BucketPolicy
+    DependsOn:
+    - WebsiteCloudfrontIdentity
+    - WebsiteBucket
     Properties:
       Bucket: !Ref 'WebsiteBucket'
       PolicyDocument:
         Statement:
         - Sid: PublicReadForGetBucketObjects
           Effect: Allow
-          Principal: '*'
+          Principal:
+            AWS: !Sub [ "arn:aws:iam::cloudfront:user/CloudFront Origin Access Identity ${identity}", { identity: !Ref "WebsiteCloudfrontIdentity" }]
           Action: s3:GetObject
-          Resource: !Join ['', ['arn:aws:s3:::', !Ref 'WebsiteBucket', /*]]
+          Resource: !Join ["", ["arn:aws:s3:::", !Ref "WebsiteBucket", /*]]
   WebsiteCloudfront:
     Type: AWS::CloudFront::Distribution
     DependsOn:
     - WebsiteBucket
+    - WebsiteCloudfrontIdentity
     Properties:
       DistributionConfig:
         Comment: Cloudfront Distribution pointing to S3 bucket
         Origins:
-        - DomainName: !Select [2, !Split ["/", !GetAtt WebsiteBucket.WebsiteURL]]
+        - DomainName: !GetAtt WebsiteBucket.DomainName
           Id: S3Origin
-          CustomOriginConfig:
-            HTTPPort: '80'
-            HTTPSPort: '443'
-            OriginProtocolPolicy: http-only
+          S3OriginConfig:
+            OriginAccessIdentity: !Sub [ "origin-access-identity/cloudfront/${identity}", { identity: !Ref "WebsiteCloudfrontIdentity" }]
         Enabled: true
         HttpVersion: 'http2'
         DefaultRootObject: index.html
         Aliases:
         - !Ref 'FullDomainName'
         DefaultCacheBehavior:
+          DefaultTTL: 300
+          MaxTTL: 300
+          MinTTL: 0
           AllowedMethods:
           - GET
           - HEAD
           Compress: true
           TargetOriginId: S3Origin
           ForwardedValues:
-            QueryString: true
+            QueryString: false
             Cookies:
               Forward: none
           ViewerProtocolPolicy: redirect-to-https
-        PriceClass: PriceClass_All
+        PriceClass: PriceClass_100
         ViewerCertificate:
           AcmCertificateArn: !Ref AcmCertificateArn
           SslSupportMethod: sni-only
